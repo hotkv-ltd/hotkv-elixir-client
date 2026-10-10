@@ -1,0 +1,72 @@
+name: Publish
+
+# Publishes the package to hex.pm when a version tag (v*) is pushed. A manual
+# run (workflow_dispatch) is a dry run unless dry_run is switched off.
+# Requires the HEX_API_KEY repository secret for a real publish.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and verify only; do not publish to hex.pm"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Verify and publish (OTP 26.2 / Elixir 1.16.2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # A tag push publishes; a manual run publishes only when dry_run is off.
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "26.2"
+          elixir-version: "1.16.2"
+
+      - name: Check that the tag matches the version in mix.exs
+        if: github.ref_type == 'tag'
+        run: |
+          version="$(grep -m1 '@version "' mix.exs | cut -d'"' -f2)"
+          tag="${GITHUB_REF_NAME#v}"
+          echo "mix.exs version: ${version}, tag: ${GITHUB_REF_NAME}"
+          if [ "${version}" != "${tag}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match mix.exs version ${version}"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Compile (warnings as errors)
+        run: mix compile --warnings-as-errors
+
+      - name: Run unit tests
+        run: mix test
+
+      - name: Build the package tarball
+        run: mix hex.build
+
+      - name: Publish to hex.pm
+        if: env.DRY_RUN != 'true'
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+        run: |
+          if [ -z "${HEX_API_KEY}" ]; then
+            echo "::error::the HEX_API_KEY secret is not set"
+            exit 1
+          fi
+          mix hex.publish --yes
+
+      - name: Dry run complete
+        if: env.DRY_RUN == 'true'
+        run: echo "Dry run, the package built and nothing was published."

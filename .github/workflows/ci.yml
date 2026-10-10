@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and unit test (OTP ${{ matrix.otp }} / Elixir ${{ matrix.elixir }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        include:
+          - otp: "25.3"
+            elixir: "1.14.5"
+          - otp: "26.2"
+            elixir: "1.16.2"
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+
+      - name: Cache deps and _build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-${{ matrix.otp }}-${{ matrix.elixir }}-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      - name: Compile (warnings as errors)
+        run: mix compile --warnings-as-errors
+
+      - name: Run unit tests
+        run: mix test
+
+      - name: Build the package tarball
+        run: mix hex.build
+
+      # ex_doc 0.40 needs Elixir 1.15, so the docs build runs on the newer
+      # matrix entry only.
+      - name: Build the documentation
+        if: matrix.elixir == '1.16.2'
+        env:
+          MIX_ENV: dev
+        run: mix docs
+
+  # Integration tests exercise every command family against a live HotKV
+  # server. The HotKV server is a commercial binary that this repository
+  # does not ship and GitHub-hosted runners cannot download, so this job is
+  # disabled here; run it locally instead:
+  #
+  #   1. Start a HotKV server, e.g.:
+  #        hotkv --port 6379 --dir /tmp/hotkv-test --save ""
+  #   2. Point HOTKV_TEST_URL at it and run the full suite:
+  #        HOTKV_TEST_URL=hotkv://127.0.0.1:6379 mix test
+  #
+  # The suite flushes nothing on that server and namespaces its keys, but
+  # use a throwaway instance anyway. Commands gated behind license features
+  # your server's license does not include reply NOLICENSE; those tests
+  # detect that and pass with a printed "SKIP (not licensed)" line, so a
+  # green run on an unlicensed server does NOT verify the enterprise
+  # families. Optional environment variable: HOTKV_TEST_FLUSHALL_URL (a
+  # disposable server, enables the FLUSHALL test). To wire this job up in
+  # your own fork, add a step that starts a HotKV server before the "Run
+  # integration tests" step below.
+  integration:
+    name: Integration tests (optional; needs a HotKV server)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: false
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "26.2"
+          elixir-version: "1.16.2"
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Run integration tests
+        env:
+          HOTKV_TEST_URL: hotkv://127.0.0.1:6379
+        run: mix test
