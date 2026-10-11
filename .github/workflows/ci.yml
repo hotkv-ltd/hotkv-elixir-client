@@ -21,7 +21,7 @@ jobs:
           - otp: "26.2"
             elixir: "1.16.2"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: erlef/setup-beam@v1
         with:
@@ -86,7 +86,7 @@ jobs:
     timeout-minutes: 30
     if: false
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: erlef/setup-beam@v1
         with:
