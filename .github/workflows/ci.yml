@@ -12,7 +12,8 @@ permissions:
 jobs:
   build:
     name: Build and unit test (OTP ${{ matrix.otp }} / Elixir ${{ matrix.elixir }})
-    runs-on: ubuntu-latest
+    # OTP 25/26 have no published builds for Ubuntu 26.04 (ubuntu-latest).
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       matrix:
@@ -83,7 +84,8 @@ jobs:
   # integration tests" step below.
   integration:
     name: Integration tests (optional; needs a HotKV server)
-    runs-on: ubuntu-latest
+    # OTP 25/26 have no published builds for Ubuntu 26.04 (ubuntu-latest).
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     if: false
     steps:
